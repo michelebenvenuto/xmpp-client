@@ -10,11 +10,13 @@ class UserClient(slixmpp.ClientXMPP):
     def __init__(self, jid, password):
         super().__init__(jid, password)
 
-        self.add_event_handler('session_start', self.start)
+        self.add_event_handler("session_start", self.start)
 
     async def start(self,event):
         self.send_presence()
         await self.get_roster()
+        print("roster recived")
+        self.disconnect()
 
 if __name__ =='__main__':
     parser = ArgumentParser(description=UserClient.__doc__)
@@ -30,10 +32,8 @@ if __name__ =='__main__':
         args.password = getpass("Password: ")
     
     xmpp = UserClient(args.jid, args.password)
-    xmpp.register_plugin('xep_0030') 
-    xmpp.register_plugin('xep_0004') 
-    xmpp.register_plugin('xep_0060') 
-    xmpp.register_plugin('xep_0199')
+    xmpp.register_plugin('xep_0030')
+    xmpp.register_plugin('xep_0004')
 
-    xmpp.connect()
-    xmpp.process(forever=False)
+    xmpp.connect(address=('alumchat.xyz',5222))
+    xmpp.process()
