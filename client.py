@@ -2,9 +2,7 @@
 import asyncio
 import logging
 from getpass import getpass
-from re import I
-import time
-import threading
+
 
 import slixmpp
 from slixmpp import jid
@@ -36,28 +34,8 @@ class UserClient(slixmpp.ClientXMPP):
         await asyncio.sleep(10)
 
         await self.show_roster()
-
-        wants_to_continue = True
-        while wants_to_continue:
-            print(self.show_menu())
-            menu_choice = int(input("-> "))
-            if menu_choice == 1:
-                print("Your contacts")
-                await self.show_roster()
-                talk_to = str(input("-> "))
-                known = self.start_conv(talk_to)
-                if known:
-                    await self.handle_conv()
-                else:
-                    print(talk_to, "is not in your contacts")
-            elif menu_choice == 2:
-                pass
-            elif menu_choice == 3:
-                print('Roster for %s' % self.boundjid.bare)
-                await self.show_roster()
-            else:
-                wants_to_continue = False
-                
+        
+        await self.client_loop()
         self.disconnect()
     
     async def show_roster(self):
@@ -92,28 +70,15 @@ class UserClient(slixmpp.ClientXMPP):
             self.presences_received.set()
         else:
             self.presences_received.clear()
-
-    def handle_user_input(self):
-        user_input = input('-> ')
-        message_length = len(user_input)
-        words = user_input.split(" ")
-        first_word = words[0]
-        if first_word[0] == "@":
-            recipient_lenght = len(first_word)
-            recipient = first_word[1:recipient_lenght] + "@alumchat.xyz"
-            body = user_input[recipient_lenght:message_length]
-            self.send_message(mto=recipient, mbody=body, mtype='chat')
-            return 0 
-        elif first_word == '/quit':
-            print("bye")
-            return 0
     
-    def handle_conv(self):
+    async def handle_conv(self):
+        print("Chating with ", self.talking_to)
+        print("\n"*3)
         continueConv = True
         while continueConv:
             user_input = input('-> ')
             if user_input != "/quit":
-                self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
+                await self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
             else:
                 continueConv = False
     
@@ -125,7 +90,31 @@ class UserClient(slixmpp.ClientXMPP):
         4)Exit
         """
         return menu
-               
+
+    async def client_loop(self):
+        wants_to_continue = True
+        while wants_to_continue:
+            print(self.show_menu())
+            menu_choice = int(input("-> "))
+            if menu_choice == 1:
+                print("Your contacts")
+                await self.show_roster()
+                talk_to = str(input("-> "))
+                known = self.start_conv(talk_to)
+                if known:
+                    await self.handle_conv()
+                else:
+                    print(talk_to, "is not in your contacts")
+            elif menu_choice == 2:
+                pass
+            elif menu_choice == 3:
+                print('Roster for %s' % self.boundjid.bare)
+                await self.show_roster()
+            else:
+                wants_to_continue = False
+                
+        self.disconnect()
+
 if __name__ =='__main__':
     parser = ArgumentParser(description=UserClient.__doc__)
 
@@ -145,5 +134,4 @@ if __name__ =='__main__':
 
 
     xmpp.connect(address=('alumchat.xyz',5223))
-    print("Done")
     xmpp.process(forever=False)
