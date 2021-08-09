@@ -1,8 +1,9 @@
 
 import asyncio
+from asyncio.tasks import sleep
 import logging
 from getpass import getpass
-
+from aioconsole import ainput, aprint
 
 import slixmpp
 from slixmpp import jid
@@ -62,7 +63,7 @@ class UserClient(slixmpp.ClientXMPP):
 
     async def message(self,msg):
         if msg['type'] in ('chat', 'normal'):
-            print(msg['from'], ':',msg['body'])
+            await aprint(msg['from'], ':',msg['body'])
 
     def wait_for_presences(self, pres):
         self.received.add(pres['from'].bare)
@@ -76,10 +77,12 @@ class UserClient(slixmpp.ClientXMPP):
         print("\n"*3)
         continueConv = True
         while continueConv:
-            user_input = input('-> ')
+            user_input = await ainput('-> ')
             if user_input != "/quit":
-                await self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
+                self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
+                await sleep(0.5)
             else:
+                self.talking_to = None
                 continueConv = False
     
     def show_menu(self):
@@ -87,7 +90,8 @@ class UserClient(slixmpp.ClientXMPP):
         1)Individual Chats
         2)Gruop Chats
         3)Show Roster
-        4)Exit
+        4)Add a Friend
+        5)Exit
         """
         return menu
 
@@ -95,11 +99,12 @@ class UserClient(slixmpp.ClientXMPP):
         wants_to_continue = True
         while wants_to_continue:
             print(self.show_menu())
-            menu_choice = int(input("-> "))
+            menu_choice = await ainput("-> ")
+            menu_choice = int(menu_choice)
             if menu_choice == 1:
                 print("Your contacts")
                 await self.show_roster()
-                talk_to = str(input("-> "))
+                talk_to = await ainput("-> ")
                 known = self.start_conv(talk_to)
                 if known:
                     await self.handle_conv()
@@ -108,12 +113,26 @@ class UserClient(slixmpp.ClientXMPP):
             elif menu_choice == 2:
                 pass
             elif menu_choice == 3:
-                print('Roster for %s' % self.boundjid.bare)
+                print('Your contacts %s' % self.boundjid.bare)
                 await self.show_roster()
+            elif menu_choice == 4:
+                to = await ainput("Friend to Add:")
+                await self.send_friend_request(to)
             else:
                 wants_to_continue = False
                 
         self.disconnect()
+
+    async def send_friend_request(self, to):
+        if "@" not in to:
+            to += "@alumchat.xyz"
+        print("Sending friend request to: ",to)
+        try:
+            self.send_presence_subscription(to,self.boundjid.bare)
+            await sleep(0.5)
+            print("Friend Request succesfully sent to: ", to)
+        except:
+            print("Couldn't add friend, are you sure ", to, " is on the server?")
 
 if __name__ =='__main__':
     parser = ArgumentParser(description=UserClient.__doc__)
@@ -131,7 +150,7 @@ if __name__ =='__main__':
         args.password = getpass("Password: ")
     
     xmpp = UserClient(args.jid, args.password)
-
+    xmpp.register_plugin('xep_0199')
 
     xmpp.connect(address=('alumchat.xyz',5223))
     xmpp.process(forever=False)
