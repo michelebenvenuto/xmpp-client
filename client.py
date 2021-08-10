@@ -3,6 +3,7 @@ import asyncio
 from asyncio.tasks import sleep
 import logging
 from getpass import getpass
+from ssl import SSL_ERROR_INVALID_ERROR_CODE
 from aioconsole import ainput, aprint
 
 import slixmpp
@@ -18,7 +19,14 @@ class UserClient(slixmpp.ClientXMPP):
         self.add_event_handler("session_start", self.start)
         self.add_event_handler("change_status", self.wait_for_presences)
         self.add_event_handler("message", self.message)
+        self.add_event_handler("groupchat_message",self.group_message)
+
+        self.register_plugin('xep_0030')
+
         self.talking_to = None
+
+        self.nick = "Micks"
+
         self.received = set()
         self.presences_received = asyncio.Event()
 
@@ -51,6 +59,14 @@ class UserClient(slixmpp.ClientXMPP):
                     print(' %s (%s) [%s]' % (name, jid, sub))
                 else:
                     print(' %s [%s]' % (jid, sub))
+                connections = self.client_roster.presence(jid)
+                for res, pres in connections.items():
+                    show = 'available'
+                if pres['show']:
+                    show = pres['show']
+                    print('   - %s (%s)' % (res, show))
+                if pres['status']:
+                    print('       %s' % pres['status'])
 
     def start_conv(self, jid):
         if "@" not in jid:
@@ -64,6 +80,27 @@ class UserClient(slixmpp.ClientXMPP):
     async def message(self,msg):
         if msg['type'] in ('chat', 'normal'):
             await aprint(msg['from'], ':',msg['body'])
+        
+    async def group_message(self,msg):
+        if msg['type'] in ('groupchat'):
+            await aprint("@", msg['mucroom'], ' ', msg['from'], ' : ', msg['body'])
+    
+    async def get_groups(self):
+        result = await self['xep_0030'].get_items(jid='conference.alumchat.xyz', iterator=True)
+        rooms = []
+        for room in result['disco_items']:
+            print(room['jid'])
+            rooms.append(room['jid'])
+        return rooms
+
+    def group_exists(self, rooms, join):
+        if "@" not in join:
+            join += "@conference.alumchat.xyz"
+        if join in rooms:
+            self.talking_to = join
+            return True
+        else:
+            return False
 
     def wait_for_presences(self, pres):
         self.received.add(pres['from'].bare)
@@ -88,10 +125,12 @@ class UserClient(slixmpp.ClientXMPP):
     def show_menu(self):
         menu = """
         1)Individual Chats
-        2)Gruop Chats
+        2)Group Chats
         3)Show Roster
         4)Add a Friend
-        5)Exit
+        5)Join a chat room
+        6)Set presence messaje
+        7)Exit
         """
         return menu
 
@@ -101,6 +140,7 @@ class UserClient(slixmpp.ClientXMPP):
             print(self.show_menu())
             menu_choice = await ainput("-> ")
             menu_choice = int(menu_choice)
+            
             if menu_choice == 1:
                 print("Your contacts")
                 await self.show_roster()
@@ -110,19 +150,43 @@ class UserClient(slixmpp.ClientXMPP):
                     await self.handle_conv()
                 else:
                     print(talk_to, "is not in your contacts")
+            
             elif menu_choice == 2:
-                pass
+                rooms = await self.get_groups()
+                to_join = await ainput('Choose a room to chat in: ')
+                succes = self.group_exists(rooms, to_join)
+                if succes:
+                    await self.handle_conv()
+                else:
+                    print("The room you want to join doesnt exists")
+
             elif menu_choice == 3:
                 print('Your contacts %s' % self.boundjid.bare)
                 await self.show_roster()
+            
             elif menu_choice == 4:
                 to = await ainput("Friend to Add:")
                 await self.send_friend_request(to)
+            
+            elif menu_choice == 5:
+                rooms = await self.get_groups()
+                to_join = await ainput('Choose a chat room to join:')
+                succes = self.group_exists(rooms, to_join)
+                if succes:
+                    self.plugin['xep_0045'].join_muc(self.talking_to, self.nick)
+                    await sleep(0.5)
+                    print("Succesfully joined: ", self.talking_to)
+                    self.talking_to = None
+                else:
+                    print("The room you want to join doesnt exists")
+            
+            elif menu_choice == 6:
+                pass
             else:
                 wants_to_continue = False
                 
         self.disconnect()
-
+    
     async def send_friend_request(self, to):
         if "@" not in to:
             to += "@alumchat.xyz"
@@ -151,6 +215,7 @@ if __name__ =='__main__':
     
     xmpp = UserClient(args.jid, args.password)
     xmpp.register_plugin('xep_0199')
+    xmpp.register_plugin('xep_0045')
 
     xmpp.connect(address=('alumchat.xyz',5223))
     xmpp.process(forever=False)
