@@ -21,9 +21,10 @@ class UserClient(slixmpp.ClientXMPP):
         self.add_event_handler("message", self.message)
         self.add_event_handler("groupchat_message",self.group_message)
 
-        self.register_plugin('xep_0030')
+        
 
         self.talking_to = None
+        self.current_group = None
 
         self.nick = "Micks"
 
@@ -56,17 +57,9 @@ class UserClient(slixmpp.ClientXMPP):
                 sub = self.client_roster[jid]['subscription']
                 name = self.client_roster[jid]['name']
                 if self.client_roster[jid]['name']:
-                    print(' %s (%s) [%s]' % (name, jid, sub))
+                    print(' %s (%s) [%s]' % (name, jid))
                 else:
                     print(' %s [%s]' % (jid, sub))
-                connections = self.client_roster.presence(jid)
-                for res, pres in connections.items():
-                    show = 'available'
-                if pres['show']:
-                    show = pres['show']
-                    print('   - %s (%s)' % (res, show))
-                if pres['status']:
-                    print('       %s' % pres['status'])
 
     def start_conv(self, jid):
         if "@" not in jid:
@@ -97,7 +90,7 @@ class UserClient(slixmpp.ClientXMPP):
         if "@" not in join:
             join += "@conference.alumchat.xyz"
         if join in rooms:
-            self.talking_to = join
+            self.current_group = join
             return True
         else:
             return False
@@ -122,6 +115,19 @@ class UserClient(slixmpp.ClientXMPP):
                 self.talking_to = None
                 continueConv = False
     
+    async def handle_group_conv(self):
+        print("Chating in ", self.current_group)
+        print("\n"*3)
+        continueConv = True
+        while continueConv:
+            user_input = await ainput('-> ')
+            if user_input != "/quit":
+                self.send_message(mto = self.current_group, mbody=user_input, mtype="groupchat")
+                await sleep(0.5)
+            else:
+                self.current_group = None
+                continueConv = False
+
     def show_menu(self):
         menu = """
         1)Individual Chats
@@ -156,7 +162,7 @@ class UserClient(slixmpp.ClientXMPP):
                 to_join = await ainput('Choose a room to chat in: ')
                 succes = self.group_exists(rooms, to_join)
                 if succes:
-                    await self.handle_conv()
+                    await self.handle_group_conv()
                 else:
                     print("The room you want to join doesnt exists")
 
@@ -173,15 +179,17 @@ class UserClient(slixmpp.ClientXMPP):
                 to_join = await ainput('Choose a chat room to join:')
                 succes = self.group_exists(rooms, to_join)
                 if succes:
-                    self.plugin['xep_0045'].join_muc(self.talking_to, self.nick)
+                    self.plugin['xep_0045'].join_muc(self.current_group, self.nick)
                     await sleep(0.5)
-                    print("Succesfully joined: ", self.talking_to)
+                    print("Succesfully joined: ", self.current_group)
                     self.talking_to = None
                 else:
                     print("The room you want to join doesnt exists")
             
             elif menu_choice == 6:
-                pass
+                status_message= await ainput("Place your wanted status message: ")
+                self.send_presence(pstatus=status_message)
+                await sleep(0.5)
             else:
                 wants_to_continue = False
                 
@@ -216,6 +224,8 @@ if __name__ =='__main__':
     xmpp = UserClient(args.jid, args.password)
     xmpp.register_plugin('xep_0199')
     xmpp.register_plugin('xep_0045')
+    xmpp.register_plugin('xep_0085')
+    xmpp.register_plugin('xep_0030')
 
     xmpp.connect(address=('alumchat.xyz',5223))
     xmpp.process(forever=False)
