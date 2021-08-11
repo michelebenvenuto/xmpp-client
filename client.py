@@ -25,8 +25,10 @@ class UserClient(slixmpp.ClientXMPP):
 
         self.talking_to = None
         self.current_group = None
+        self.stored_group_chats = {}
+        self.stored_direct_chats = {}
 
-        self.nick = "Micks"
+        self.nick = "micks2"
 
         self.received = set()
         self.presences_received = asyncio.Event()
@@ -71,13 +73,25 @@ class UserClient(slixmpp.ClientXMPP):
             return False
 
     async def message(self,msg):
-        if msg['type'] in ('chat', 'normal'):
+        if msg['type'] in ('chat', 'normal') and self.talking_to!=None and self.talking_to in  str(msg['from']):
             await aprint(msg['from'], ':',msg['body'])
+        elif msg['type'] in ('chat', 'normal'):
+            print("New message from: ", msg['from'] )
+            if msg['from'] not in self.stored_direct_chats.keys():
+                self.stored_direct_chats[msg['from']] = []    
+            self.stored_direct_chats[msg['from']].append((msg['from'],msg['body']))
         
     async def group_message(self,msg):
-        if msg['type'] in ('groupchat'):
-            await aprint("@", msg['mucroom'], ' ', msg['from'], ' : ', msg['body'])
-    
+        if msg['type'] in ('groupchat') and self.current_group!=None and self.current_group in  str(msg['mucroom']):
+            if msg['mucnick'] != self.nick:
+                await aprint("@", msg['mucroom'], ' ', msg['mucnick'], ' : ', msg['body'])
+        elif msg['type'] in ('groupchat'):
+            print("New messages at: ", msg['mucroom'])
+            if msg['mucroom'] not in self.stored_group_chats.keys():
+                self.stored_group_chats[msg['mucroom']] = []
+            
+            self.stored_group_chats[msg['mucroom']].append((msg['mucnick'],msg['body']))
+            
     async def get_groups(self):
         result = await self['xep_0030'].get_items(jid='conference.alumchat.xyz', iterator=True)
         rooms = []
@@ -105,6 +119,14 @@ class UserClient(slixmpp.ClientXMPP):
     async def handle_conv(self):
         print("Chating with ", self.talking_to)
         print("\n"*3)
+        stored_key = None
+        for user in self.stored_direct_chats.keys():
+            if self.talking_to in str(user):
+                stored_key = user
+        if stored_key != None:
+            for stored_message in self.stored_direct_chats[stored_key]:
+                print(stored_message[0],":" ,stored_message[1])
+            self.stored_direct_chats.pop(stored_key)
         continueConv = True
         while continueConv:
             user_input = await ainput('-> ')
@@ -118,6 +140,14 @@ class UserClient(slixmpp.ClientXMPP):
     async def handle_group_conv(self):
         print("Chating in ", self.current_group)
         print("\n"*3)
+        stored_key = None
+        for room in self.stored_group_chats.keys():
+            if self.current_group in str(room):
+                stored_key = room
+        if stored_key != None:
+            for stored_message in self.stored_group_chats[stored_key]:
+                print(stored_message[0],":" ,stored_message[1])
+            self.stored_group_chats.pop(stored_key)
         continueConv = True
         while continueConv:
             user_input = await ainput('-> ')
@@ -179,7 +209,8 @@ class UserClient(slixmpp.ClientXMPP):
                 to_join = await ainput('Choose a chat room to join:')
                 succes = self.group_exists(rooms, to_join)
                 if succes:
-                    self.plugin['xep_0045'].join_muc(self.current_group, self.nick)
+                    nick = await ainput("Pick A nickname: ")
+                    self.plugin['xep_0045'].join_muc(self.current_group, nick)
                     await sleep(0.5)
                     print("Succesfully joined: ", self.current_group)
                     self.talking_to = None
