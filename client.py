@@ -135,7 +135,7 @@ class UserClient(slixmpp.ClientXMPP):
         3)Show Roster
         4)Add a Friend
         5)Join a chat room
-        6)Set presence messaje
+        6)Set presence message
         7)Exit
         """
         return menu
@@ -206,9 +206,40 @@ class UserClient(slixmpp.ClientXMPP):
         except:
             print("Couldn't add friend, are you sure ", to, " is on the server?")
 
+class RegisterClient(slixmpp.ClientXMPP):
+    def __init__(self, jid, password):
+        slixmpp.ClientXMPP.__init__(self, jid, password)
+
+        self.add_event_handler("session_start", self.start)
+
+        self.add_event_handler("register", self.register)
+    
+    async def start(self, event):
+        self.send_presence()
+        await self.get_roster()
+        self.disconnect()
+
+    async def register(self, iq):
+
+        resp = self.Iq()
+        resp['type'] = 'set'
+        resp['register']['username'] = self.boundjid.user
+        resp['register']['password'] = self.password
+        try:
+            await resp.send()
+            logging.info("Account created for %s!" % self.boundjid)
+        except IqError as e:
+            logging.error("Could not register account: %s" %
+                    e.iq['error']['text'])
+            self.disconnect()
+        except IqTimeout:
+            logging.error("No response from server.")
+            self.disconnect()
+
 if __name__ =='__main__':
     parser = ArgumentParser(description=UserClient.__doc__)
 
+    parser.add_argument("-m", dest="mode")
     parser.add_argument("-j", dest="jid")
     parser.add_argument("-p", dest="password")
 
@@ -220,12 +251,26 @@ if __name__ =='__main__':
         args.jid = input("Username: ")
     if args.password is None:
         args.password = getpass("Password: ")
-    
-    xmpp = UserClient(args.jid, args.password)
-    xmpp.register_plugin('xep_0199')
-    xmpp.register_plugin('xep_0045')
-    xmpp.register_plugin('xep_0085')
-    xmpp.register_plugin('xep_0030')
+    if args.mode is None:
+        args.mode = input("Sign Up(U) or Sign in(I):")
 
-    xmpp.connect(address=('alumchat.xyz',5223))
-    xmpp.process(forever=False)
+    if args.mode == "I":
+        xmpp = UserClient(args.jid, args.password)
+        xmpp.register_plugin('xep_0199')
+        xmpp.register_plugin('xep_0045')
+        xmpp.register_plugin('xep_0085')
+        xmpp.register_plugin('xep_0030')
+
+        xmpp.connect(address=('alumchat.xyz',5223))
+        xmpp.process(forever=False)
+    
+    if args.mode == "U":
+        xmpp = RegisterClient(args.jid, args.password)
+        xmpp.connect(address=('alumchat.xyz',5223))
+        xmpp.register_plugin('xep_0030')
+        xmpp.register_plugin('xep_0004')
+        xmpp.register_plugin('xep_0066')
+        xmpp.register_plugin('xep_0077')
+        xmpp['xep_0077'].force_registration = True
+        xmpp.process(forever=False)
+        print("If no error was presented run the code again to sign in")
