@@ -1,5 +1,7 @@
 # xmpp-client
 
+![Demo] (https://user-images.githubusercontent.com/35434145/129242264-2f4a2a76-3920-41d3-b4ba-471e32a0352f.gif)
+
 A working xmpp client used for a chat application with the following functionalities:
 
 1 to 1 chats
