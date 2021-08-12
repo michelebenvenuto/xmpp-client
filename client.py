@@ -20,6 +20,7 @@ class UserClient(slixmpp.ClientXMPP):
         self.add_event_handler("change_status", self.wait_for_presences)
         self.add_event_handler("message", self.message)
         self.add_event_handler("groupchat_message",self.group_message)
+        self.add_event_handler("chatstate", self.show_chatstate)
 
         
 
@@ -28,7 +29,7 @@ class UserClient(slixmpp.ClientXMPP):
         self.stored_group_chats = {}
         self.stored_direct_chats = {}
 
-        self.nick = "micks2"
+        self.nick = None
 
         self.received = set()
         self.presences_received = asyncio.Event()
@@ -62,7 +63,7 @@ class UserClient(slixmpp.ClientXMPP):
                     print(' %s (%s) [%s]' % (name, jid))
                 else:
                     print(' %s [%s]' % (jid, sub))
-
+    
     def start_conv(self, jid):
         if "@" not in jid:
             jid += "@alumchat.xyz"
@@ -130,12 +131,19 @@ class UserClient(slixmpp.ClientXMPP):
         continueConv = True
         while continueConv:
             user_input = await ainput('-> ')
-            if user_input != "/quit":
-                self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
-                await sleep(0.5)
-            else:
+            if user_input == "/quit":
                 self.talking_to = None
                 continueConv = False
+                self.status_notification(self.talking_to, 'chat','gone')
+            elif "/file" in user_input:
+                file_name = user_input.split()[1]
+                url = await self['xep_0363'].upload_file(file_name, domain='alumchat.xyz', timeout=10)
+                message = self.make_message(mto=self.talking_to, mbody=url)
+                message.send()
+            else:
+                self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
+                self.status_notification(self.talking_to, 'chat','active')
+                await sleep(0.5)
     
     async def handle_group_conv(self):
         print("Chating in ", self.current_group)
@@ -210,6 +218,7 @@ class UserClient(slixmpp.ClientXMPP):
                 succes = self.group_exists(rooms, to_join)
                 if succes:
                     nick = await ainput("Pick A nickname: ")
+                    self.nick = nick
                     self.plugin['xep_0045'].join_muc(self.current_group, nick)
                     await sleep(0.5)
                     print("Succesfully joined: ", self.current_group)
@@ -236,6 +245,14 @@ class UserClient(slixmpp.ClientXMPP):
             print("Friend Request succesfully sent to: ", to)
         except:
             print("Couldn't add friend, are you sure ", to, " is on the server?")
+
+    def status_notification(self, to, chat ,status):
+        status_to_send = self.make_message(mto=to,mfrom=self.boundjid.bare, mtype=chat)
+        status_to_send['chat_state'] = status
+        status_to_send.send()
+
+    def show_chatstate(self,iq):
+        print(iq['chat_state'])
 
 class RegisterClient(slixmpp.ClientXMPP):
     def __init__(self, jid, password):
@@ -291,6 +308,7 @@ if __name__ =='__main__':
         xmpp.register_plugin('xep_0045')
         xmpp.register_plugin('xep_0085')
         xmpp.register_plugin('xep_0030')
+        xmpp.register_plugin('xep_0363')
 
         xmpp.connect(address=('alumchat.xyz',5223))
         xmpp.process(forever=False)
