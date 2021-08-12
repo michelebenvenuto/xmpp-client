@@ -361,7 +361,6 @@ if __name__ =='__main__':
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG, format='%(levelname)-8s %(message)s')
     #Asking for not given arguments
     if args.mode is None:
         args.mode = input("Sign Up(U), Sign in(I) or Delete Account(D):")
