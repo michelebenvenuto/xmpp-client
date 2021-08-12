@@ -14,6 +14,8 @@ File sending
 
 Notifications 
 
+Status messages
+
 ## Getting Started 
 
 ### Requirements
