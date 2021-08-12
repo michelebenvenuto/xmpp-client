@@ -11,11 +11,13 @@ from slixmpp import jid
 from slixmpp.exceptions import IqError, IqTimeout
 from argparse import ArgumentParser
 
+#Class that will be used to control comunication
 class UserClient(slixmpp.ClientXMPP):
     
     def __init__(self, jid, password):
         super().__init__(jid, password)
 
+        #Usefull event handlers
         self.add_event_handler("session_start", self.start)
         self.add_event_handler("change_status", self.wait_for_presences)
         self.add_event_handler("message", self.message)
@@ -23,7 +25,7 @@ class UserClient(slixmpp.ClientXMPP):
         self.add_event_handler("chatstate", self.show_chatstate)
 
         
-
+        #Atributes used to provide a better User experience
         self.talking_to = None
         self.current_group = None
         self.stored_group_chats = {}
@@ -34,6 +36,8 @@ class UserClient(slixmpp.ClientXMPP):
         self.received = set()
         self.presences_received = asyncio.Event()
 
+    #This function is called when the connection to the server starts
+    #it shows the users roster and starts the UI
     async def start(self,event):
         try:
             await self.get_roster()
@@ -51,6 +55,7 @@ class UserClient(slixmpp.ClientXMPP):
         await self.client_loop()
         self.disconnect()
     
+    #Shows the friends list of the user
     async def show_roster(self):
         groups = self.client_roster.groups()
         for group in groups:
@@ -63,7 +68,9 @@ class UserClient(slixmpp.ClientXMPP):
                     print(' %s (%s) [%s]' % (name, jid))
                 else:
                     print(' %s [%s]' % (jid, sub))
-    
+    #Function used to check if a jid is known by the user 
+    #Params:
+    #jid: jid to check if known
     def start_conv(self, jid):
         if "@" not in jid:
             jid += "@alumchat.xyz"
@@ -72,7 +79,12 @@ class UserClient(slixmpp.ClientXMPP):
                 return True
         else:
             return False
-
+    #Function used whenever a message stanza of type nomal or chat is received, checks  
+    #if the received message is from the user that we are currently chatting with, 
+    #if it isnt it stores the message on stored_direct_chats to print whenever
+    #the user moves to the desired conversation
+    #Params:
+    #msg: received message stanza
     async def message(self,msg):
         if msg['type'] in ('chat', 'normal') and self.talking_to!=None and self.talking_to in  str(msg['from']):
             await aprint(msg['from'], ':',msg['body'])
@@ -81,7 +93,12 @@ class UserClient(slixmpp.ClientXMPP):
             if msg['from'] not in self.stored_direct_chats.keys():
                 self.stored_direct_chats[msg['from']] = []    
             self.stored_direct_chats[msg['from']].append((msg['from'],msg['body']))
-        
+    #Function used whenever a message stanza of type groupchat is received, 
+    #checks if the received message is from the current active room, 
+    #if it isnt it stores the message on stored_direct_chats to print whenever the user moves 
+    #to the desired chatroom
+    #Params:
+    #msg: received message stanza
     async def group_message(self,msg):
         if msg['type'] in ('groupchat') and self.current_group!=None and self.current_group in  str(msg['mucroom']):
             if msg['mucnick'] != self.nick:
@@ -92,7 +109,7 @@ class UserClient(slixmpp.ClientXMPP):
                 self.stored_group_chats[msg['mucroom']] = []
             
             self.stored_group_chats[msg['mucroom']].append((msg['mucnick'],msg['body']))
-            
+    #Function used to print all the available chat rooms in the server using xep_0030   
     async def get_groups(self):
         result = await self['xep_0030'].get_items(jid='conference.alumchat.xyz', iterator=True)
         rooms = []
@@ -100,7 +117,11 @@ class UserClient(slixmpp.ClientXMPP):
             print(room['jid'])
             rooms.append(room['jid'])
         return rooms
-
+    #Function used to check if a wanted room exists on the server, if it exists it sets the room 
+    #as the active chat room
+    #Params:
+    #rooms: rooms on the server
+    #join: room that the user wants to join
     def group_exists(self, rooms, join):
         if "@" not in join:
             join += "@conference.alumchat.xyz"
@@ -110,6 +131,9 @@ class UserClient(slixmpp.ClientXMPP):
         else:
             return False
 
+    #Function called whenever a presence stanza is received
+    #Params:
+    #pres: the received presence stanza
     def wait_for_presences(self, pres):
         self.received.add(pres['from'].bare)
         if len(self.received) >= len(self.client_roster.keys()):
@@ -117,9 +141,11 @@ class UserClient(slixmpp.ClientXMPP):
         else:
             self.presences_received.clear()
     
+    #Function used whenever, it reads a user input and acts acordingly to what the user types
     async def handle_conv(self):
         print("Chating with ", self.talking_to)
         print("\n"*3)
+        self.status_notification(self.talking_to, 'chat','active')
         stored_key = None
         for user in self.stored_direct_chats.keys():
             if self.talking_to in str(user):
@@ -132,9 +158,9 @@ class UserClient(slixmpp.ClientXMPP):
         while continueConv:
             user_input = await ainput('-> ')
             if user_input == "/quit":
+                self.status_notification(self.talking_to, 'chat','paused')
                 self.talking_to = None
                 continueConv = False
-                self.status_notification(self.talking_to, 'chat','gone')
             elif "/file" in user_input:
                 file_name = user_input.split()[1]
                 url = await self['xep_0363'].upload_file(file_name, domain='alumchat.xyz', timeout=10)
@@ -142,9 +168,8 @@ class UserClient(slixmpp.ClientXMPP):
                 message.send()
             else:
                 self.send_message(mto = self.talking_to, mbody=user_input, mtype="chat")
-                self.status_notification(self.talking_to, 'chat','active')
                 await sleep(0.5)
-    
+    #Similar to handle_conv but used in a group chat environment
     async def handle_group_conv(self):
         print("Chating in ", self.current_group)
         print("\n"*3)
@@ -165,7 +190,7 @@ class UserClient(slixmpp.ClientXMPP):
             else:
                 self.current_group = None
                 continueConv = False
-
+    #Function used to print the starting menu
     def show_menu(self):
         menu = """
         1)Individual Chats
@@ -177,7 +202,7 @@ class UserClient(slixmpp.ClientXMPP):
         7)Exit
         """
         return menu
-
+    #The main loop of our client app, used as UI
     async def client_loop(self):
         wants_to_continue = True
         while wants_to_continue:
@@ -234,7 +259,9 @@ class UserClient(slixmpp.ClientXMPP):
                 wants_to_continue = False
                 
         self.disconnect()
-    
+    #Function used to send a presence_subscription to a desired JID
+    #Params:
+    #to: jid to send the presence_subscription
     async def send_friend_request(self, to):
         if "@" not in to:
             to += "@alumchat.xyz"
@@ -245,15 +272,23 @@ class UserClient(slixmpp.ClientXMPP):
             print("Friend Request succesfully sent to: ", to)
         except:
             print("Couldn't add friend, are you sure ", to, " is on the server?")
-
+    #Function used to send notifications whenever the user sets a chat as the active chat
+    #Params:
+    #to: JID to send the status notification
+    #chat: type of chat 'chat' or 'groupchat'
+    #status: the status of the client
     def status_notification(self, to, chat ,status):
         status_to_send = self.make_message(mto=to,mfrom=self.boundjid.bare, mtype=chat)
         status_to_send['chat_state'] = status
         status_to_send.send()
+    #Function used to show the client whenever a receiver leaves the active chat
+    #Params:
+    #msg: received message stanza
+    def show_chatstate(self,msg):
+        if self.talking_to!=None and self.talking_to in  str(msg['from']):
+            print(msg['from'],' is ',msg['chat_state'])
 
-    def show_chatstate(self,iq):
-        print(iq['chat_state'])
-
+#Class used whenever the user wants to create a new acount of the server
 class RegisterClient(slixmpp.ClientXMPP):
     def __init__(self, jid, password):
         slixmpp.ClientXMPP.__init__(self, jid, password)
@@ -287,6 +322,7 @@ class RegisterClient(slixmpp.ClientXMPP):
 if __name__ =='__main__':
     parser = ArgumentParser(description=UserClient.__doc__)
 
+    #Arguments needed to start a sesion
     parser.add_argument("-m", dest="mode")
     parser.add_argument("-j", dest="jid")
     parser.add_argument("-p", dest="password")
@@ -294,7 +330,7 @@ if __name__ =='__main__':
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)-8s %(message)s')
-
+    #Asking for not given arguments
     if args.jid is None:
         args.jid = input("Username: ")
     if args.password is None:
@@ -304,6 +340,7 @@ if __name__ =='__main__':
 
     if args.mode == "I":
         xmpp = UserClient(args.jid, args.password)
+        #Registering needed plugins
         xmpp.register_plugin('xep_0199')
         xmpp.register_plugin('xep_0045')
         xmpp.register_plugin('xep_0085')
@@ -316,6 +353,7 @@ if __name__ =='__main__':
     if args.mode == "U":
         xmpp = RegisterClient(args.jid, args.password)
         xmpp.connect(address=('alumchat.xyz',5223))
+        #Registering needed plugins
         xmpp.register_plugin('xep_0030')
         xmpp.register_plugin('xep_0004')
         xmpp.register_plugin('xep_0066')
