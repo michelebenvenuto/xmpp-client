@@ -3,10 +3,15 @@
 A working xmpp client used for a chat application with the following functionalities:
 
 1 to 1 chats
+
 Group Chats
+
 Add Friends
+
 List Contacts
+
 File sending
+
 Notifications 
 
 ## Getting Started 
