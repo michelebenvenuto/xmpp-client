@@ -319,6 +319,38 @@ class RegisterClient(slixmpp.ClientXMPP):
             logging.error("No response from server.")
             self.disconnect()
 
+#Class used whenever the user wants to delete an account
+class deleteUser(slixmpp.ClientXMPP):
+    def __init__(self, jid,password):
+        slixmpp.ClientXMPP.__init__(self,jid,password)
+        self.add_event_handler("session_start", self.start)
+        self.add_event_handler("unregister", self.unregister)
+
+    async def start(self,event):
+        self.send_presence()
+        await self.get_roster()
+        await self.unregister()
+
+        self.disconnect()
+
+    #Sends an IQ stanza to ask the server to remove the acount 
+    async def unregister(self):
+        resp = self.Iq()
+        resp['type'] = 'set'
+        resp['from'] = self.boundjid.user
+        resp['password'] = self.password
+        resp['register']['remove'] = 'remove'
+
+        try:
+            await resp.send()
+            print("Success! Acount Deleted "+str(self.boundjid))
+        except IqError as e:
+            print("IQ Error:Account Not Deleted")
+            self.disconnect()
+        except IqTimeout:
+            print("Timeout")
+            self.disconnect() 
+
 if __name__ =='__main__':
     parser = ArgumentParser(description=UserClient.__doc__)
 
@@ -331,12 +363,13 @@ if __name__ =='__main__':
 
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)-8s %(message)s')
     #Asking for not given arguments
+    if args.mode is None:
+        args.mode = input("Sign Up(U), Sign in(I) or Delete Account(D):")
     if args.jid is None:
         args.jid = input("Username: ")
     if args.password is None:
         args.password = getpass("Password: ")
-    if args.mode is None:
-        args.mode = input("Sign Up(U) or Sign in(I):")
+    
 
     if args.mode == "I":
         xmpp = UserClient(args.jid, args.password)
@@ -361,3 +394,12 @@ if __name__ =='__main__':
         xmpp['xep_0077'].force_registration = True
         xmpp.process(forever=False)
         print("If no error was presented run the code again to sign in")
+
+    if args.mode == "D":   
+        xmpp= deleteUser(args.jid, args.password)
+        xmpp.connect(address=('alumchat.xyz',5223))
+        xmpp.register_plugin('xep_0030')
+        xmpp.register_plugin('xep_0004')
+        xmpp.register_plugin('xep_0066')
+        xmpp.register_plugin('xep_0077')
+        xmpp.process(forever=False)
