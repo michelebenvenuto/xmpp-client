@@ -1,12 +1,19 @@
 # xmpp-client
 
-_A working xmpp client used for a chat application_
+A working xmpp client used for a chat application with the following functionalities:
+
+1 to 1 chats
+Group Chats
+Add Friends
+List Contacts
+File sending
+Notifications 
 
 ## Getting Started 
 
 ### Requirements
 
-_To run this proyect yo need to install the following libraries:_
+To run this proyect yo need to install the following libraries:
 
 ```
 slixmpp
@@ -22,19 +29,19 @@ pip install -r requirements.txt
 
 ### Running 
 
-_Running the client is simple you just need to run the following command:_
+Running the client is simple you just need to run the following command:
 
 
 ```
 python client.py -m wantedmode -j jid -p password
 ```
 
-_or you can just run_
+or you can just run
 
 ```
 python client.py
 ```
-_and the program will ask for the needed arguments_
+and the program will ask for the needed arguments
 
 ## Author
 
